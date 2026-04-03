@@ -48,6 +48,22 @@
   .status-dot.error      { background: var(--err); }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
+  /* ── Tabs ─────────────────────────────────────────────────── */
+  .tab-bar {
+    display: flex; gap: 4px; padding: 14px 28px 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .tab-btn {
+    padding: 9px 18px; border: none; cursor: pointer;
+    background: transparent; color: var(--muted);
+    font-size: .82rem; font-weight: 600; border-radius: 6px 6px 0 0;
+    border-bottom: 2px solid transparent;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface2); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--surface2); }
+
   /* ── Layout ───────────────────────────────────────────────── */
   main { flex: 1; display: flex; gap: 20px; padding: 20px 28px; }
   .sidebar { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
@@ -153,6 +169,26 @@
   tbody td.val    { font-weight: 700; }
   tbody td.signed { color: var(--muted); font-size: .78rem; }
 
+  /* ── YAML table ───────────────────────────────────────────── */
+  tr.section-header td {
+    background: var(--surface2); color: var(--accent);
+    font-size: .7rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 1.1px; padding: 7px 14px;
+    border-top: 1px solid var(--border);
+  }
+  tbody td.reg-name { max-width: 280px; word-break: break-word; }
+  tbody td.scaled-val { font-weight: 700; font-family: 'JetBrains Mono','Fira Code',monospace; }
+  tbody td.unit { color: var(--muted); font-size: .78rem; }
+  tbody td.dtype { font-size: .72rem; color: var(--null); font-family: 'JetBrains Mono','Fira Code',monospace; }
+
+  /* ── YAML info pill ───────────────────────────────────────── */
+  .yaml-info {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2);
+    border-radius: 8px; padding: 10px 14px; font-size: .82rem;
+  }
+  .yaml-info .count { font-weight: 800; color: var(--accent); font-size: 1.1rem; }
+
   /* ── Sanity badge ─────────────────────────────────────────── */
   .badge {
     display: inline-flex; align-items: center; gap: 5px;
@@ -184,6 +220,18 @@
   }
   .empty-state svg { opacity: .25; }
   .empty-state p { font-size: .9rem; }
+
+  /* ── Discover table ───────────────────────────────────────── */
+  .reg-type-pill {
+    display: inline-block; font-size: .65rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px; text-transform: uppercase;
+    letter-spacing: .7px; white-space: nowrap;
+  }
+  .pill-holding  { background: rgba(99,102,241,.15); color: #818cf8; border: 1px solid rgba(99,102,241,.3); }
+  .pill-input    { background: rgba(59,130,246,.15);  color: #60a5fa; border: 1px solid rgba(59,130,246,.3); }
+  .pill-coil     { background: rgba(34,197,94,.12);   color: #4ade80; border: 1px solid rgba(34,197,94,.25); }
+  .pill-discrete { background: rgba(245,158,11,.12);  color: #fbbf24; border: 1px solid rgba(245,158,11,.25); }
+  .discover-phase { font-size: .72rem; color: var(--muted); font-style: italic; }
 
   /* ── Toast ────────────────────────────────────────────────── */
   #toast {
@@ -226,13 +274,20 @@
   <div id="statusDot" class="status-dot" title="Idle"></div>
 </header>
 
+<!-- ── Tabs ─────────────────────────────────────────────────────────────── -->
+<div class="tab-bar">
+  <button class="tab-btn active" id="tabRaw"      onclick="switchTab('raw')">🔬&nbsp; Raw Scan</button>
+  <button class="tab-btn"        id="tabYaml"     onclick="switchTab('yaml')">📋&nbsp; YAML Registers</button>
+  <button class="tab-btn"        id="tabDiscover" onclick="switchTab('discover')">🌐&nbsp; Discover All</button>
+</div>
+
 <!-- ── Main layout ───────────────────────────────────────────────────────── -->
 <main>
 
   <!-- Sidebar -->
   <aside class="sidebar">
 
-    <!-- Connection card -->
+    <!-- Connection card (shared) -->
     <div class="card">
       <div class="card-title">Connection</div>
       <div class="field">
@@ -251,8 +306,8 @@
       </div>
     </div>
 
-    <!-- Scan parameters card -->
-    <div class="card">
+    <!-- Raw scan parameters (shown in raw tab) -->
+    <div class="card" id="rawParamsCard">
       <div class="card-title">Scan Parameters</div>
       <div class="field">
         <label for="regType">Register Type</label>
@@ -279,8 +334,8 @@
       </div>
     </div>
 
-    <!-- Sanity config card -->
-    <div class="card">
+    <!-- Raw sanity config (shown in raw tab) -->
+    <div class="card" id="rawSanityCard">
       <div class="card-title">Sanity Check Limits</div>
       <div class="field-row">
         <div class="field">
@@ -297,10 +352,41 @@
       </p>
     </div>
 
-    <!-- Actions -->
+    <!-- YAML register info (shown in yaml tab) -->
+    <div class="card" id="yamlInfoCard" style="display:none;">
+      <div class="card-title">YAML Register Config</div>
+      <div class="yaml-info">
+        <div class="count" id="yamlRegCount">0</div>
+        <div>
+          <div style="font-weight:600;">Named registers loaded</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px;">from modbus.yaml</div>
+        </div>
+      </div>
+      <p style="font-size:.72rem;color:var(--muted);margin-top:12px;">
+        Values are scaled, typed (int16/uint16/int32), and include per-unit sanity checks.
+      </p>
+    </div>
+
+    <!-- Discover info card (shown in discover tab) -->
+    <div class="card" id="discoverInfoCard" style="display:none;">
+      <div class="card-title">Discover All Registers</div>
+      <p style="font-size:.82rem;line-height:1.6;margin-bottom:12px;">
+        Probes all 65,536 addresses across all four register types
+        (<strong>Holding</strong>, <strong>Input</strong>, <strong>Coils</strong>, <strong>Discrete Inputs</strong>)
+        and reports only the ones the device responds to.
+      </p>
+      <p style="font-size:.72rem;color:var(--muted);line-height:1.5;">
+        ⚠ This sends thousands of requests and may take several minutes.
+        Only addresses that return a valid response are shown.
+      </p>
+    </div>
+
+    <!-- Actions (mode-dependent buttons) -->
     <div style="display:flex;flex-direction:column;gap:8px;">
-      <button id="btnScan" class="btn-primary">▶&nbsp; Start Scan</button>
-      <button id="btnCancel" class="btn-danger" disabled>⏹&nbsp; Cancel</button>
+      <button id="btnScan"        class="btn-primary">▶&nbsp; Start Scan</button>
+      <button id="btnScanYaml"    class="btn-primary" style="display:none;">▶&nbsp; Scan YAML Registers</button>
+      <button id="btnScanDiscover" class="btn-primary" style="display:none;">🌐&nbsp; Discover All Registers</button>
+      <button id="btnCancel"      class="btn-danger" disabled>⏹&nbsp; Cancel</button>
     </div>
 
     <!-- Progress -->
@@ -308,6 +394,7 @@
       <div class="card-title">Progress</div>
       <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
       <div class="progress-text" id="progressText">0 / 0</div>
+      <div class="discover-phase" id="progressPhase" style="display:none;"></div>
     </div>
 
   </aside>
@@ -325,7 +412,7 @@
 
     <!-- Toolbar -->
     <div class="toolbar">
-      <input id="filterInput" class="filter-input" placeholder="🔍  Filter by register or value…" oninput="applyFilter()" />
+      <input id="filterInput" class="filter-input" placeholder="🔍  Filter by name or value…" oninput="applyFilter()" />
       <select id="filterSanity" class="small" onchange="applyFilter()">
         <option value="">All sanity</option>
         <option value="ok">OK only</option>
@@ -337,16 +424,16 @@
       <button class="btn-ghost" onclick="clearTable()">🗑 Clear</button>
     </div>
 
-    <!-- Table -->
-    <div class="table-wrap" id="tableWrap">
-      <div class="empty-state" id="emptyState">
+    <!-- Raw scan table -->
+    <div class="table-wrap" id="rawTableWrap">
+      <div class="empty-state" id="rawEmptyState">
         <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
           <circle cx="32" cy="32" r="28" stroke="#94a3b8" stroke-width="2"/>
           <path d="M22 32h20M32 22v20" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
         </svg>
         <p>Configure connection and press <strong>Start Scan</strong></p>
       </div>
-      <table id="resultTable" style="display:none;">
+      <table id="rawTable" style="display:none;">
         <thead>
           <tr>
             <th>Register</th>
@@ -357,7 +444,58 @@
             <th>Sanity</th>
           </tr>
         </thead>
-        <tbody id="resultBody"></tbody>
+        <tbody id="rawBody"></tbody>
+      </table>
+    </div>
+
+    <!-- YAML scan table -->
+    <div class="table-wrap" id="yamlTableWrap" style="display:none;">
+      <div class="empty-state" id="yamlEmptyState">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="#94a3b8" stroke-width="2"/>
+          <rect x="20" y="22" width="24" height="3" rx="1.5" fill="#94a3b8"/>
+          <rect x="20" y="30" width="18" height="3" rx="1.5" fill="#94a3b8"/>
+          <rect x="20" y="38" width="21" height="3" rx="1.5" fill="#94a3b8"/>
+        </svg>
+        <p>Press <strong>Scan YAML Registers</strong> to read all named registers</p>
+      </div>
+      <table id="yamlTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Addr</th>
+            <th>Value</th>
+            <th>Unit</th>
+            <th>Type</th>
+            <th>Sanity</th>
+          </tr>
+        </thead>
+        <tbody id="yamlBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Discover results table -->
+    <div class="table-wrap" id="discoverTableWrap" style="display:none;">
+      <div class="empty-state" id="discoverEmptyState">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="#94a3b8" stroke-width="2"/>
+          <circle cx="32" cy="32" r="10" stroke="#94a3b8" stroke-width="2"/>
+          <path d="M32 10v6M32 48v6M10 32h6M48 32h6" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <p>Press <strong>Discover All Registers</strong> to probe the device</p>
+      </div>
+      <table id="discoverTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Register Type</th>
+            <th>Address</th>
+            <th>Hex</th>
+            <th>Value (unsigned)</th>
+            <th>Signed</th>
+            <th>Sanity</th>
+          </tr>
+        </thead>
+        <tbody id="discoverBody"></tbody>
       </table>
     </div>
 
@@ -370,14 +508,51 @@
 <script>
 "use strict";
 
-// ── State ────────────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 let ws = null;
 let scanId = null;
 let scanning = false;
-let allRows = []; // { register, raw, value, sanity, regType }
-let stats = { total: 0, ok: 0, warn: 0, err: 0 };
+let activeTab = "raw"; // "raw" | "yaml" | "discover"
 
-// ── WebSocket ─────────────────────────────────────────────────────────────────
+let rawRows      = []; // { register, raw, value, sanity, regType }
+let yamlRows     = []; // { register, name, section, scaledValue, unit, dataType, sanity }
+let discoverRows = []; // { regType, register, raw, value, sanity }
+let rawStats      = { total: 0, ok: 0, warn: 0, err: 0 };
+let yamlStats     = { total: 0, ok: 0, warn: 0, err: 0 };
+let discoverStats = { total: 0, ok: 0, warn: 0, err: 0 };
+
+let yamlRegCount = 0;
+
+// ── Tab switching ──────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  if (scanning) { toast("Stop the scan before switching tabs.", true); return; }
+  activeTab = tab;
+
+  document.getElementById("tabRaw").classList.toggle("active",      tab === "raw");
+  document.getElementById("tabYaml").classList.toggle("active",     tab === "yaml");
+  document.getElementById("tabDiscover").classList.toggle("active", tab === "discover");
+
+  document.getElementById("rawParamsCard").style.display     = tab === "raw"      ? "" : "none";
+  document.getElementById("rawSanityCard").style.display     = tab === "raw"      ? "" : "none";
+  document.getElementById("yamlInfoCard").style.display      = tab === "yaml"     ? "" : "none";
+  document.getElementById("discoverInfoCard").style.display  = tab === "discover" ? "" : "none";
+
+  document.getElementById("btnScan").style.display         = tab === "raw"      ? "" : "none";
+  document.getElementById("btnScanYaml").style.display     = tab === "yaml"     ? "" : "none";
+  document.getElementById("btnScanDiscover").style.display = tab === "discover" ? "" : "none";
+
+  document.getElementById("rawTableWrap").style.display      = tab === "raw"      ? "" : "none";
+  document.getElementById("yamlTableWrap").style.display     = tab === "yaml"     ? "" : "none";
+  document.getElementById("discoverTableWrap").style.display = tab === "discover" ? "" : "none";
+
+  const s = tab === "raw" ? rawStats : tab === "yaml" ? yamlStats : discoverStats;
+  renderStats(s);
+  const rows = tab === "raw" ? rawRows : tab === "yaml" ? yamlRows : discoverRows;
+  document.getElementById("statsRow").style.display  = rows.length > 0 ? "" : "none";
+  document.getElementById("btnExport").disabled      = rows.length === 0;
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────────────
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}`);
@@ -403,18 +578,24 @@ function ensureWs() {
   });
 }
 
-// ── Message handler ───────────────────────────────────────────────────────────
+// ── Message handler ────────────────────────────────────────────────────────────
 function handleMsg(msg) {
-  if (msg.type === "result")   onResult(msg);
-  else if (msg.type === "progress") onProgress(msg);
-  else if (msg.type === "done")     endScan(false);
+  if (msg.type === "config")    onConfig(msg);
+  else if (msg.type === "result")    onResult(msg);
+  else if (msg.type === "progress")  onProgress(msg);
+  else if (msg.type === "done")      endScan(false);
   else if (msg.type === "error") {
     toast(msg.message, true);
     endScan(true);
   }
 }
 
-// ── Scan controls ─────────────────────────────────────────────────────────────
+function onConfig(msg) {
+  yamlRegCount = (msg.registers || []).length;
+  document.getElementById("yamlRegCount").textContent = yamlRegCount;
+}
+
+// ── Scan controls ──────────────────────────────────────────────────────────────
 async function startScan() {
   if (scanning) return;
 
@@ -428,28 +609,62 @@ async function startScan() {
 
   if (!ip) { toast("Please enter a valid IP address.", true); return; }
 
-  try {
-    await ensureWs();
-  } catch (err) {
-    toast("Cannot connect to scanner server: " + err.message, true);
-    return;
-  }
+  try { await ensureWs(); }
+  catch (err) { toast("Cannot connect to scanner server: " + err.message, true); return; }
 
-  clearTableData();
+  clearRawData();
+  beginScan();
+  ws.send(JSON.stringify({ type: "scan", id: scanId, ip, port, unitId, regType, startReg, count, batchSize }));
+}
+
+async function startYamlScan() {
+  if (scanning) return;
+  if (yamlRegCount === 0) { toast("No YAML registers loaded. Ensure modbus.yaml is present on the server.", true); return; }
+
+  const ip     = document.getElementById("ip").value.trim();
+  const port   = parseInt(document.getElementById("port").value) || 502;
+  const unitId = parseInt(document.getElementById("unitId").value) || 1;
+
+  if (!ip) { toast("Please enter a valid IP address.", true); return; }
+
+  try { await ensureWs(); }
+  catch (err) { toast("Cannot connect to scanner server: " + err.message, true); return; }
+
+  clearYamlData();
+  beginScan();
+  ws.send(JSON.stringify({ type: "scan_yaml", id: scanId, ip, port, unitId }));
+}
+
+async function startDiscover() {
+  if (scanning) return;
+
+  const ip     = document.getElementById("ip").value.trim();
+  const port   = parseInt(document.getElementById("port").value) || 502;
+  const unitId = parseInt(document.getElementById("unitId").value) || 1;
+
+  if (!ip) { toast("Please enter a valid IP address.", true); return; }
+
+  try { await ensureWs(); }
+  catch (err) { toast("Cannot connect to scanner server: " + err.message, true); return; }
+
+  clearDiscoverData();
+  beginScan();
+  document.getElementById("progressPhase").style.display = "";
+  ws.send(JSON.stringify({ type: "scan_discover", id: scanId, ip, port, unitId }));
+}
+
+function beginScan() {
   scanning = true;
   scanId = Date.now().toString();
 
-  document.getElementById("btnScan").disabled = true;
-  document.getElementById("btnCancel").disabled = false;
+  document.getElementById("btnScan").disabled          = true;
+  document.getElementById("btnScanYaml").disabled      = true;
+  document.getElementById("btnScanDiscover").disabled  = true;
+  document.getElementById("btnCancel").disabled        = false;
   document.getElementById("progressCard").style.display = "";
-  document.getElementById("statsRow").style.display = "";
-  document.getElementById("btnExport").disabled = true;
+  document.getElementById("statsRow").style.display     = "";
+  document.getElementById("btnExport").disabled   = true;
   setStatus("scanning");
-
-  ws.send(JSON.stringify({
-    type: "scan", id: scanId,
-    ip, port, unitId, regType, startReg, count, batchSize
-  }));
 }
 
 function cancelScan() {
@@ -459,43 +674,69 @@ function cancelScan() {
 
 function endScan(withError) {
   scanning = false;
-  document.getElementById("btnScan").disabled = false;
-  document.getElementById("btnCancel").disabled = true;
-  document.getElementById("btnExport").disabled = allRows.length === 0;
+  document.getElementById("btnScan").disabled          = false;
+  document.getElementById("btnScanYaml").disabled      = false;
+  document.getElementById("btnScanDiscover").disabled  = false;
+  document.getElementById("btnCancel").disabled        = true;
+  document.getElementById("progressPhase").style.display = "none";
+  const rows = activeTab === "raw" ? rawRows : activeTab === "yaml" ? yamlRows : discoverRows;
+  document.getElementById("btnExport").disabled = rows.length === 0;
   setStatus(withError ? "error" : "connected");
-  if (!withError) toast(`Scan complete — ${allRows.length} registers read.`);
+  if (!withError) toast(`Scan complete — ${rows.length} registers found.`);
 }
 
-// ── Result rendering ──────────────────────────────────────────────────────────
+// ── Result rendering ───────────────────────────────────────────────────────────
 function onResult(msg) {
-  const { register, raw, value, dataType, sanity } = msg;
-
-  const row = { register, raw, value, dataType, sanity };
-  allRows.push(row);
-
-  // Update stats
-  stats.total++;
-  if (sanity.status === "ok")    stats.ok++;
-  else if (sanity.status === "warn") stats.warn++;
-  else                           stats.err++;
-  updateStats();
-
-  // Show table if hidden
-  document.getElementById("emptyState").style.display = "none";
-  document.getElementById("resultTable").style.display = "";
-
-  appendRow(row);
+  if (msg.discover) {
+    onDiscoverResult(msg);
+  } else if (msg.name !== undefined) {
+    onYamlResult(msg);
+  } else {
+    onRawResult(msg);
+  }
 }
 
-function appendRow(row) {
-  const { register, raw, value, dataType, sanity } = row;
-  const isRegister = dataType !== "coil" && dataType !== "discrete";
+function onRawResult(msg) {
+  const { register, raw, value, dataType, sanity } = msg;
+  const row = { register, raw, value, dataType, sanity };
+  rawRows.push(row);
 
-  const hexStr    = isRegister && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4, "0") : "—";
-  const binStr    = isRegister && raw !== null ? raw.toString(2).padStart(16, "0") : "—";
-  const signed    = isRegister && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : null;
+  rawStats.total++;
+  if (sanity.status === "ok")        rawStats.ok++;
+  else if (sanity.status === "warn") rawStats.warn++;
+  else                               rawStats.err++;
+  renderStats(rawStats);
+
+  document.getElementById("rawEmptyState").style.display = "none";
+  document.getElementById("rawTable").style.display = "";
+  appendRawRow(row);
+}
+
+function onYamlResult(msg) {
+  const { register, name, section, scaledValue, unit, dataType, sanity } = msg;
+  const row = { register, name, section, scaledValue, unit, dataType, sanity };
+  yamlRows.push(row);
+
+  yamlStats.total++;
+  if (sanity.status === "ok")        yamlStats.ok++;
+  else if (sanity.status === "warn") yamlStats.warn++;
+  else                               yamlStats.err++;
+  renderStats(yamlStats);
+
+  document.getElementById("yamlEmptyState").style.display = "none";
+  document.getElementById("yamlTable").style.display = "";
+  appendYamlRow(row);
+}
+
+function appendRawRow(row) {
+  const { register, raw, value, dataType, sanity } = row;
+  const isReg = dataType !== "coil" && dataType !== "discrete";
+
+  const hexStr    = isReg && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4, "0") : "—";
+  const binStr    = isReg && raw !== null ? raw.toString(2).padStart(16, "0") : "—";
+  const signed    = isReg && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : null;
   const signedStr = signed !== null ? signed.toString() : "—";
-  const displayVal = raw === null ? "—" : (isRegister ? raw.toString() : value);
+  const displayVal = raw === null ? "—" : (isReg ? raw.toString() : value);
 
   const tr = document.createElement("tr");
   tr.dataset.reg    = register;
@@ -510,8 +751,90 @@ function appendRow(row) {
     <td class="hex" style="font-size:.72rem;letter-spacing:.5px">${esc(binStr)}</td>
     <td>${badgeHtml(sanity)}</td>
   `;
+  document.getElementById("rawBody").appendChild(tr);
+}
 
-  document.getElementById("resultBody").appendChild(tr);
+// Track current section for YAML table grouping
+let currentSection = null;
+
+function appendYamlRow(row) {
+  const { register, name, section, scaledValue, unit, dataType, sanity } = row;
+  const body = document.getElementById("yamlBody");
+
+  // Insert section header when section changes
+  if (section !== currentSection) {
+    currentSection = section;
+    const hdr = document.createElement("tr");
+    hdr.className = "section-header";
+    hdr.dataset.section = section;
+    hdr.innerHTML = `<td colspan="6">${esc(section || "Other")}</td>`;
+    body.appendChild(hdr);
+  }
+
+  const displayVal = scaledValue !== null && scaledValue !== undefined
+    ? String(scaledValue)
+    : "—";
+  const shortName = name.replace(/^EU\d+[A-Z]?_/, "").replace(/_/g, " ");
+
+  const tr = document.createElement("tr");
+  tr.dataset.reg    = register;
+  tr.dataset.value  = displayVal;
+  tr.dataset.name   = name.toLowerCase();
+  tr.dataset.sanity = sanity.status;
+
+  tr.innerHTML = `
+    <td class="reg-name" title="${esc(name)}">${esc(shortName)}</td>
+    <td class="reg">${esc(String(register))}</td>
+    <td class="scaled-val">${esc(displayVal)}</td>
+    <td class="unit">${esc(unit || "—")}</td>
+    <td class="dtype">${esc(dataType || "—")}</td>
+    <td>${badgeHtml(sanity)}</td>
+  `;
+  body.appendChild(tr);
+}
+
+function onDiscoverResult(msg) {
+  const { regType, register, raw, sanity } = msg;
+  const row = { regType, register, raw, sanity };
+  discoverRows.push(row);
+
+  discoverStats.total++;
+  if (sanity.status === "ok")        discoverStats.ok++;
+  else if (sanity.status === "warn") discoverStats.warn++;
+  else                               discoverStats.err++;
+  renderStats(discoverStats);
+
+  document.getElementById("discoverEmptyState").style.display = "none";
+  document.getElementById("discoverTable").style.display = "";
+  appendDiscoverRow(row);
+}
+
+function appendDiscoverRow(row) {
+  const { regType, register, raw, sanity } = row;
+  const isBool = regType === "coil" || regType === "discrete";
+
+  const hexStr    = !isBool && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4, "0") : "—";
+  const signed    = !isBool && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : null;
+  const signedStr = signed !== null ? signed.toString() : "—";
+  const displayVal = raw === null ? "—" : isBool ? (raw ? "ON" : "OFF") : raw.toString();
+
+  const pillCls = `pill-${regType}`;
+
+  const tr = document.createElement("tr");
+  tr.dataset.reg    = register;
+  tr.dataset.value  = displayVal;
+  tr.dataset.regtype = regType;
+  tr.dataset.sanity = sanity.status;
+
+  tr.innerHTML = `
+    <td><span class="reg-type-pill ${esc(pillCls)}">${esc(regType)}</span></td>
+    <td class="reg">${esc(String(register))}</td>
+    <td class="hex">${esc(hexStr)}</td>
+    <td class="val">${esc(displayVal)}</td>
+    <td class="signed">${esc(signedStr)}</td>
+    <td>${badgeHtml(sanity)}</td>
+  `;
+  document.getElementById("discoverBody").appendChild(tr);
 }
 
 function badgeHtml(sanity) {
@@ -528,65 +851,147 @@ function badgeHtml(sanity) {
   return `<span class="badge ${cls[sanity.status] || "badge-null"}">${icons[sanity.status] || "?"} ${label[sanity.status] || esc(String(sanity.status))}</span>`;
 }
 
-// ── Progress ──────────────────────────────────────────────────────────────────
+// ── Progress ───────────────────────────────────────────────────────────────────
 function onProgress(msg) {
   const pct = msg.total > 0 ? Math.round((msg.done / msg.total) * 100) : 0;
   document.getElementById("progressBar").style.width = pct + "%";
   document.getElementById("progressText").textContent = `${msg.done} / ${msg.total} (${pct}%)`;
+  if (msg.phase) {
+    const phaseEl = document.getElementById("progressPhase");
+    const labels = { holding: "Holding Registers", input: "Input Registers", coil: "Coils", discrete: "Discrete Inputs" };
+    phaseEl.textContent = `Scanning: ${labels[msg.phase] || msg.phase}`;
+    phaseEl.style.display = "";
+  }
 }
 
-// ── Filter ────────────────────────────────────────────────────────────────────
+// ── Filter ─────────────────────────────────────────────────────────────────────
 function applyFilter() {
   const text   = document.getElementById("filterInput").value.toLowerCase().trim();
   const sanity = document.getElementById("filterSanity").value;
-  document.querySelectorAll("#resultBody tr").forEach((tr) => {
-    const regMatch  = !text || tr.dataset.reg.includes(text) || tr.dataset.value.toLowerCase().includes(text);
-    const sanMatch  = !sanity || tr.dataset.sanity === sanity;
-    tr.style.display = regMatch && sanMatch ? "" : "none";
-  });
+
+  if (activeTab === "raw") {
+    document.querySelectorAll("#rawBody tr").forEach((tr) => {
+      const regMatch = !text || tr.dataset.reg.includes(text) || tr.dataset.value.toLowerCase().includes(text);
+      const sanMatch = !sanity || tr.dataset.sanity === sanity;
+      tr.style.display = regMatch && sanMatch ? "" : "none";
+    });
+  } else if (activeTab === "yaml") {
+    document.querySelectorAll("#yamlBody tr:not(.section-header)").forEach((tr) => {
+      const regMatch  = !text || tr.dataset.reg.includes(text)
+                        || tr.dataset.value.toLowerCase().includes(text)
+                        || (tr.dataset.name || "").includes(text);
+      const sanMatch  = !sanity || tr.dataset.sanity === sanity;
+      const visible   = regMatch && sanMatch;
+      tr.style.display = visible ? "" : "none";
+    });
+    // Hide section headers with no visible children
+    document.querySelectorAll("#yamlBody tr.section-header").forEach((hdr) => {
+      let hasVisible = false;
+      let sibling = hdr.nextElementSibling;
+      while (sibling && !sibling.classList.contains("section-header")) {
+        if (sibling.style.display !== "none") { hasVisible = true; break; }
+        sibling = sibling.nextElementSibling;
+      }
+      hdr.style.display = hasVisible ? "" : "none";
+    });
+  } else {
+    document.querySelectorAll("#discoverBody tr").forEach((tr) => {
+      const regMatch  = !text || tr.dataset.reg.includes(text)
+                        || tr.dataset.value.toLowerCase().includes(text)
+                        || (tr.dataset.regtype || "").includes(text);
+      const sanMatch  = !sanity || tr.dataset.sanity === sanity;
+      tr.style.display = regMatch && sanMatch ? "" : "none";
+    });
+  }
 }
 
-// ── Export CSV ────────────────────────────────────────────────────────────────
+// ── Export CSV ─────────────────────────────────────────────────────────────────
 function exportCSV() {
-  const rows = [["Register", "Hex", "Value (unsigned)", "Signed", "Sanity Status", "Sanity Reason"]];
-  allRows.forEach(({ register, raw, dataType, sanity }) => {
-    const isReg = dataType !== "coil" && dataType !== "discrete";
-    const hex    = isReg && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4,"0") : "";
-    const signed = isReg && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : "";
-    rows.push([register, hex, raw ?? "", signed, sanity.status, sanity.reason]);
-  });
-  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  let rows, csv;
+  if (activeTab === "raw") {
+    rows = [["Register", "Hex", "Value (unsigned)", "Signed", "Sanity Status", "Sanity Reason"]];
+    rawRows.forEach(({ register, raw, dataType, sanity }) => {
+      const isReg = dataType !== "coil" && dataType !== "discrete";
+      const hex    = isReg && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4,"0") : "";
+      const signed = isReg && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : "";
+      rows.push([register, hex, raw ?? "", signed, sanity.status, sanity.reason || ""]);
+    });
+  } else if (activeTab === "yaml") {
+    rows = [["Name", "Address", "Value", "Unit", "Data Type", "Sanity Status", "Sanity Reason"]];
+    yamlRows.forEach(({ name, register, scaledValue, unit, dataType, sanity }) => {
+      rows.push([name, register, scaledValue ?? "", unit || "", dataType || "", sanity.status, sanity.reason || ""]);
+    });
+  } else {
+    rows = [["Register Type", "Address", "Hex", "Value (unsigned)", "Signed", "Sanity Status", "Sanity Reason"]];
+    discoverRows.forEach(({ regType, register, raw, sanity }) => {
+      const isBool = regType === "coil" || regType === "discrete";
+      const hex    = !isBool && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4,"0") : "";
+      const signed = !isBool && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : "";
+      rows.push([regType, register, hex, raw ?? "", signed, sanity.status, sanity.reason || ""]);
+    });
+  }
+  csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `modbus_scan_${Date.now()}.csv`;
+  a.download = `modbus_scan_${activeTab}_${Date.now()}.csv`;
   a.click();
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// ── Utilities ──────────────────────────────────────────────────────────────────
 function clearTable() {
   if (scanning) { toast("Stop the scan before clearing.", true); return; }
-  clearTableData();
+  if (activeTab === "raw")      clearRawData();
+  else if (activeTab === "yaml") clearYamlData();
+  else                           clearDiscoverData();
 }
 
-function clearTableData() {
-  allRows = [];
-  stats = { total: 0, ok: 0, warn: 0, err: 0 };
-  document.getElementById("resultBody").innerHTML = "";
-  document.getElementById("resultTable").style.display = "none";
-  document.getElementById("emptyState").style.display = "";
+function clearRawData() {
+  rawRows = [];
+  rawStats = { total: 0, ok: 0, warn: 0, err: 0 };
+  document.getElementById("rawBody").innerHTML = "";
+  document.getElementById("rawTable").style.display = "none";
+  document.getElementById("rawEmptyState").style.display = "";
   document.getElementById("statsRow").style.display = "none";
   document.getElementById("progressCard").style.display = "none";
   document.getElementById("progressBar").style.width = "0%";
   document.getElementById("btnExport").disabled = true;
-  updateStats();
+  renderStats(rawStats);
 }
 
-function updateStats() {
-  document.getElementById("statTotal").textContent = stats.total;
-  document.getElementById("statOk").textContent    = stats.ok;
-  document.getElementById("statWarn").textContent  = stats.warn;
-  document.getElementById("statErr").textContent   = stats.err;
+function clearYamlData() {
+  yamlRows = [];
+  yamlStats = { total: 0, ok: 0, warn: 0, err: 0 };
+  currentSection = null;
+  document.getElementById("yamlBody").innerHTML = "";
+  document.getElementById("yamlTable").style.display = "none";
+  document.getElementById("yamlEmptyState").style.display = "";
+  document.getElementById("statsRow").style.display = "none";
+  document.getElementById("progressCard").style.display = "none";
+  document.getElementById("progressBar").style.width = "0%";
+  document.getElementById("btnExport").disabled = true;
+  renderStats(yamlStats);
+}
+
+function clearDiscoverData() {
+  discoverRows = [];
+  discoverStats = { total: 0, ok: 0, warn: 0, err: 0 };
+  document.getElementById("discoverBody").innerHTML = "";
+  document.getElementById("discoverTable").style.display = "none";
+  document.getElementById("discoverEmptyState").style.display = "";
+  document.getElementById("statsRow").style.display = "none";
+  document.getElementById("progressCard").style.display = "none";
+  document.getElementById("progressBar").style.width = "0%";
+  document.getElementById("progressPhase").style.display = "none";
+  document.getElementById("btnExport").disabled = true;
+  renderStats(discoverStats);
+}
+
+function renderStats(s) {
+  document.getElementById("statTotal").textContent = s.total;
+  document.getElementById("statOk").textContent    = s.ok;
+  document.getElementById("statWarn").textContent  = s.warn;
+  document.getElementById("statErr").textContent   = s.err;
 }
 
 function setStatus(state) {
@@ -609,24 +1014,25 @@ function toast(msg, isErr = false) {
   toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
 }
 
-// ── Wire buttons ──────────────────────────────────────────────────────────────
+// ── Wire buttons ───────────────────────────────────────────────────────────────
 document.getElementById("btnScan").addEventListener("click", startScan);
+document.getElementById("btnScanYaml").addEventListener("click", startYamlScan);
+document.getElementById("btnScanDiscover").addEventListener("click", startDiscover);
 document.getElementById("btnCancel").addEventListener("click", cancelScan);
 
-// ── Custom sanity check ───────────────────────────────────────────────────────
-// Applied client-side on top of server sanity (override badge if outside user range)
-document.getElementById("sanMin").addEventListener("change", revalidateTable);
-document.getElementById("sanMax").addEventListener("change", revalidateTable);
+// ── Custom sanity check (raw tab) ──────────────────────────────────────────────
+document.getElementById("sanMin").addEventListener("change", revalidateRawTable);
+document.getElementById("sanMax").addEventListener("change", revalidateRawTable);
 
-function revalidateTable() {
+function revalidateRawTable() {
   const minVal = document.getElementById("sanMin").value !== ""
     ? parseInt(document.getElementById("sanMin").value) : null;
   const maxVal = document.getElementById("sanMax").value !== ""
     ? parseInt(document.getElementById("sanMax").value) : null;
 
-  document.querySelectorAll("#resultBody tr").forEach((tr, idx) => {
-    if (idx >= allRows.length) return;
-    const row = allRows[idx];
+  document.querySelectorAll("#rawBody tr").forEach((tr, idx) => {
+    if (idx >= rawRows.length) return;
+    const row = rawRows[idx];
     const raw = row.raw;
     if (raw === null) return;
 
@@ -644,7 +1050,7 @@ function revalidateTable() {
   applyFilter();
 }
 
-// ── Auto-connect ──────────────────────────────────────────────────────────────
+// ── Auto-connect ───────────────────────────────────────────────────────────────
 connect();
 </script>
 </body>
