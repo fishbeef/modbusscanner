@@ -207,7 +207,11 @@ async function handleScan(ws, msg, activeSessions) {
       if (!session.cancelled) await sleep(20);
     }
   } finally {
-    try { client.close(); } catch (closeErr) { console.error("Error closing Modbus client:", closeErr.message); }
+    try {
+      client.close();
+    } catch (closeErr) {
+      console.error("Error closing Modbus client:", closeErr.message);
+    }
     send({ type: "done" });
     activeSessions.delete(id);
   }
@@ -292,7 +296,11 @@ async function handleScanYaml(ws, msg, activeSessions) {
       if (!session.cancelled) await sleep(20);
     }
   } finally {
-    try { client.close(); } catch (closeErr) { console.error("Error closing Modbus client:", closeErr.message); }
+    try {
+      client.close();
+    } catch (closeErr) {
+      console.error("Error closing Modbus client:", closeErr.message);
+    }
     send({ type: "done" });
     activeSessions.delete(id);
   }
@@ -536,7 +544,11 @@ async function handleDiscover(ws, msg, activeSessions) {
       if (session.cancelled) break;
     }
   } finally {
-    try { client.close(); } catch (closeErr) { console.error("Error closing Modbus client:", closeErr.message); }
+    try {
+      client.close();
+    } catch (closeErr) {
+      console.error("Error closing Modbus client:", closeErr.message);
+    }
     send({ type: "done" });
     activeSessions.delete(id);
   }
