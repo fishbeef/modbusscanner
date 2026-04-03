@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Modbus TCP Scanner</title>
+<style>
+  /* ── Reset & Base ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --surface2: #22263a;
+    --border:   #2e3350;
+    --accent:   #3b82f6;
+    --accent2:  #6366f1;
+    --text:     #e2e8f0;
+    --muted:    #94a3b8;
+    --ok:       #22c55e;
+    --warn:     #f59e0b;
+    --err:      #ef4444;
+    --null:     #6b7280;
+    --radius:   10px;
+    --shadow:   0 4px 24px rgba(0,0,0,.45);
+  }
+
+  html { background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, sans-serif; font-size: 14px; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* ── Header ───────────────────────────────────────────────── */
+  header {
+    background: linear-gradient(135deg, #1a1d27 0%, #22263a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  header svg { width: 32px; height: 32px; flex-shrink: 0; }
+  header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: .3px; }
+  header p  { font-size: .8rem; color: var(--muted); margin-top: 2px; }
+  .status-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--null); margin-left: auto; flex-shrink: 0;
+    box-shadow: 0 0 6px currentColor; transition: background .3s;
+  }
+  .status-dot.connected  { background: var(--ok); }
+  .status-dot.scanning   { background: var(--warn); animation: pulse 1s infinite; }
+  .status-dot.error      { background: var(--err); }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  main { flex: 1; display: flex; gap: 20px; padding: 20px 28px; }
+  .sidebar { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── Card ─────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .card-title {
+    font-size: .7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: var(--muted); margin-bottom: 14px;
+  }
+
+  /* ── Form elements ────────────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  label { font-size: .75rem; font-weight: 600; color: var(--muted); }
+
+  input, select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: .85rem;
+    outline: none;
+    transition: border-color .2s;
+    width: 100%;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--null); }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  /* ── Buttons ──────────────────────────────────────────────── */
+  button {
+    cursor: pointer; border: none; border-radius: 6px;
+    font-weight: 600; font-size: .85rem; padding: 9px 16px;
+    transition: filter .15s, opacity .15s;
+  }
+  button:hover { filter: brightness(1.1); }
+  button:active { filter: brightness(.9); }
+  button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff; width: 100%;
+  }
+  .btn-danger  { background: var(--err);  color: #fff; width: 100%; }
+  .btn-ghost   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+
+  /* ── Progress ─────────────────────────────────────────────── */
+  .progress-wrap { display: flex; flex-direction: column; gap: 6px; }
+  .progress-bar-bg {
+    height: 6px; border-radius: 3px; background: var(--surface2); overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%; border-radius: 3px; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .3s;
+  }
+  .progress-text { font-size: .75rem; color: var(--muted); }
+
+  /* ── Stats row ────────────────────────────────────────────── */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px;
+    text-align: center;
+  }
+  .stat-box .val { font-size: 1.4rem; font-weight: 800; }
+  .stat-box .lbl { font-size: .65rem; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-top: 3px; }
+  .stat-ok   .val { color: var(--ok); }
+  .stat-warn .val { color: var(--warn); }
+  .stat-err  .val { color: var(--err); }
+  .stat-tot  .val { color: var(--accent); }
+
+  /* ── Table ────────────────────────────────────────────────── */
+  .table-wrap {
+    overflow: auto; flex: 1;
+    border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--surface);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    position: sticky; top: 0; background: var(--surface2);
+    padding: 10px 14px; font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .9px; color: var(--muted);
+    text-align: left; border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid rgba(46,51,80,.5); transition: background .1s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 8px 14px; font-size: .82rem; }
+  tbody td.reg    { font-family: 'JetBrains Mono', 'Fira Code', monospace; color: var(--muted); }
+  tbody td.hex    { font-family: 'JetBrains Mono', 'Fira Code', monospace; color: var(--muted); font-size: .78rem; }
+  tbody td.val    { font-weight: 700; }
+  tbody td.signed { color: var(--muted); font-size: .78rem; }
+
+  /* ── Sanity badge ─────────────────────────────────────────── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: .7rem; font-weight: 700; padding: 3px 8px;
+    border-radius: 20px; white-space: nowrap;
+  }
+  .badge-ok   { background: rgba(34,197,94,.12);  color: var(--ok);   border: 1px solid rgba(34,197,94,.25); }
+  .badge-warn { background: rgba(245,158,11,.12); color: var(--warn); border: 1px solid rgba(245,158,11,.25); }
+  .badge-err  { background: rgba(239,68,68,.12);  color: var(--err);  border: 1px solid rgba(239,68,68,.25); }
+  .badge-null { background: rgba(107,114,128,.12);color: var(--null); border: 1px solid rgba(107,114,128,.25); }
+
+  /* ── Toolbar ──────────────────────────────────────────────── */
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+  .filter-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 10px;
+    font-size: .82rem; outline: none; width: 180px;
+  }
+  .filter-input:focus { border-color: var(--accent); }
+
+  select.small { padding: 6px 8px; font-size: .78rem; width: auto; }
+
+  /* ── Empty / loading state ────────────────────────────────── */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 12px; padding: 60px 20px;
+    color: var(--muted);
+  }
+  .empty-state svg { opacity: .25; }
+  .empty-state p { font-size: .9rem; }
+
+  /* ── Toast ────────────────────────────────────────────────── */
+  #toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px 18px;
+    font-size: .82rem; box-shadow: var(--shadow);
+    transform: translateY(80px); opacity: 0;
+    transition: transform .3s, opacity .3s;
+    z-index: 999; max-width: 340px;
+  }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.toast-err { border-color: var(--err); color: var(--err); }
+
+  /* ── Responsive ───────────────────────────────────────────── */
+  @media (max-width: 780px) {
+    main { flex-direction: column; padding: 14px; }
+    .sidebar { width: 100%; }
+    .stats { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ───────────────────────────────────────────────────────────── -->
+<header>
+  <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect width="48" height="48" rx="12" fill="#3b82f6" fill-opacity=".15"/>
+    <path d="M10 24h8M30 24h8M24 10v8M24 30v8" stroke="#3b82f6" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="24" cy="24" r="6" stroke="#6366f1" stroke-width="2.5"/>
+    <circle cx="10" cy="24" r="3" fill="#3b82f6"/>
+    <circle cx="38" cy="24" r="3" fill="#3b82f6"/>
+    <circle cx="24" cy="10" r="3" fill="#3b82f6"/>
+    <circle cx="24" cy="38" r="3" fill="#3b82f6"/>
+  </svg>
+  <div>
+    <h1>Modbus TCP Scanner</h1>
+    <p>Scan and inspect Modbus TCP registers</p>
+  </div>
+  <div id="statusDot" class="status-dot" title="Idle"></div>
+</header>
+
+<!-- ── Main layout ───────────────────────────────────────────────────────── -->
+<main>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+
+    <!-- Connection card -->
+    <div class="card">
+      <div class="card-title">Connection</div>
+      <div class="field">
+        <label for="ip">IP Address</label>
+        <input id="ip" type="text" value="192.168.1.40" placeholder="192.168.1.40" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="port">Port</label>
+          <input id="port" type="number" value="502" min="1" max="65535" />
+        </div>
+        <div class="field">
+          <label for="unitId">Unit ID</label>
+          <input id="unitId" type="number" value="1" min="0" max="255" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Scan parameters card -->
+    <div class="card">
+      <div class="card-title">Scan Parameters</div>
+      <div class="field">
+        <label for="regType">Register Type</label>
+        <select id="regType">
+          <option value="holding" selected>Holding Registers (4x)</option>
+          <option value="input">Input Registers (3x)</option>
+          <option value="coil">Coils (0x)</option>
+          <option value="discrete">Discrete Inputs (1x)</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="startReg">Start Register</label>
+          <input id="startReg" type="number" value="0" min="0" max="65535" />
+        </div>
+        <div class="field">
+          <label for="count">Count</label>
+          <input id="count" type="number" value="100" min="1" max="65535" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="batchSize">Batch Size <span style="color:var(--null)">(1–125)</span></label>
+        <input id="batchSize" type="number" value="10" min="1" max="125" />
+      </div>
+    </div>
+
+    <!-- Sanity config card -->
+    <div class="card">
+      <div class="card-title">Sanity Check Limits</div>
+      <div class="field-row">
+        <div class="field">
+          <label for="sanMin">Min Value</label>
+          <input id="sanMin" type="number" value="" placeholder="none" />
+        </div>
+        <div class="field">
+          <label for="sanMax">Max Value</label>
+          <input id="sanMax" type="number" value="" placeholder="none" />
+        </div>
+      </div>
+      <p style="font-size:.72rem;color:var(--muted);margin-top:4px;">
+        Optional unsigned (0–65535) range check for register values.
+      </p>
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button id="btnScan" class="btn-primary">▶&nbsp; Start Scan</button>
+      <button id="btnCancel" class="btn-danger" disabled>⏹&nbsp; Cancel</button>
+    </div>
+
+    <!-- Progress -->
+    <div class="card progress-wrap" id="progressCard" style="display:none;">
+      <div class="card-title">Progress</div>
+      <div class="progress-bar-bg"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="progress-text" id="progressText">0 / 0</div>
+    </div>
+
+  </aside>
+
+  <!-- Content -->
+  <section class="content">
+
+    <!-- Stats -->
+    <div class="stats" id="statsRow" style="display:none;">
+      <div class="stat-box stat-tot"><div class="val" id="statTotal">0</div><div class="lbl">Total</div></div>
+      <div class="stat-box stat-ok" ><div class="val" id="statOk">0</div><div class="lbl">OK</div></div>
+      <div class="stat-box stat-warn"><div class="val" id="statWarn">0</div><div class="lbl">Warning</div></div>
+      <div class="stat-box stat-err"><div class="val" id="statErr">0</div><div class="lbl">Error</div></div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <input id="filterInput" class="filter-input" placeholder="🔍  Filter by register or value…" oninput="applyFilter()" />
+      <select id="filterSanity" class="small" onchange="applyFilter()">
+        <option value="">All sanity</option>
+        <option value="ok">OK only</option>
+        <option value="warn">Warnings</option>
+        <option value="error">Errors</option>
+      </select>
+      <div class="spacer"></div>
+      <button class="btn-ghost" onclick="exportCSV()" id="btnExport" disabled>⬇ Export CSV</button>
+      <button class="btn-ghost" onclick="clearTable()">🗑 Clear</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap" id="tableWrap">
+      <div class="empty-state" id="emptyState">
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="#94a3b8" stroke-width="2"/>
+          <path d="M22 32h20M32 22v20" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <p>Configure connection and press <strong>Start Scan</strong></p>
+      </div>
+      <table id="resultTable" style="display:none;">
+        <thead>
+          <tr>
+            <th>Register</th>
+            <th>Hex</th>
+            <th>Value (unsigned)</th>
+            <th>Signed</th>
+            <th>Binary</th>
+            <th>Sanity</th>
+          </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+    </div>
+
+  </section>
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+// ── State ────────────────────────────────────────────────────────────────────
+let ws = null;
+let scanId = null;
+let scanning = false;
+let allRows = []; // { register, raw, value, sanity, regType }
+let stats = { total: 0, ok: 0, warn: 0, err: 0 };
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}`);
+
+  ws.onopen = () => setStatus("connected");
+  ws.onclose = () => {
+    setStatus("idle");
+    ws = null;
+    if (scanning) endScan(true);
+  };
+  ws.onerror = () => setStatus("error");
+  ws.onmessage = (e) => {
+    try { handleMsg(JSON.parse(e.data)); } catch { /* ignore */ }
+  };
+}
+
+function ensureWs() {
+  return new Promise((resolve, reject) => {
+    if (ws && ws.readyState === WebSocket.OPEN) { resolve(); return; }
+    connect();
+    ws.onopen = () => { setStatus("connected"); resolve(); };
+    ws.onerror = () => reject(new Error("WebSocket connection failed"));
+  });
+}
+
+// ── Message handler ───────────────────────────────────────────────────────────
+function handleMsg(msg) {
+  if (msg.type === "result")   onResult(msg);
+  else if (msg.type === "progress") onProgress(msg);
+  else if (msg.type === "done")     endScan(false);
+  else if (msg.type === "error") {
+    toast(msg.message, true);
+    endScan(true);
+  }
+}
+
+// ── Scan controls ─────────────────────────────────────────────────────────────
+async function startScan() {
+  if (scanning) return;
+
+  const ip       = document.getElementById("ip").value.trim();
+  const port     = parseInt(document.getElementById("port").value) || 502;
+  const unitId   = parseInt(document.getElementById("unitId").value) || 1;
+  const regType  = document.getElementById("regType").value;
+  const startReg = parseInt(document.getElementById("startReg").value) || 0;
+  const count    = parseInt(document.getElementById("count").value) || 100;
+  const batchSize= parseInt(document.getElementById("batchSize").value) || 10;
+
+  if (!ip) { toast("Please enter a valid IP address.", true); return; }
+
+  try {
+    await ensureWs();
+  } catch (err) {
+    toast("Cannot connect to scanner server: " + err.message, true);
+    return;
+  }
+
+  clearTableData();
+  scanning = true;
+  scanId = Date.now().toString();
+
+  document.getElementById("btnScan").disabled = true;
+  document.getElementById("btnCancel").disabled = false;
+  document.getElementById("progressCard").style.display = "";
+  document.getElementById("statsRow").style.display = "";
+  document.getElementById("btnExport").disabled = true;
+  setStatus("scanning");
+
+  ws.send(JSON.stringify({
+    type: "scan", id: scanId,
+    ip, port, unitId, regType, startReg, count, batchSize
+  }));
+}
+
+function cancelScan() {
+  if (!scanning || !ws || !scanId) return;
+  ws.send(JSON.stringify({ type: "cancel", id: scanId }));
+}
+
+function endScan(withError) {
+  scanning = false;
+  document.getElementById("btnScan").disabled = false;
+  document.getElementById("btnCancel").disabled = true;
+  document.getElementById("btnExport").disabled = allRows.length === 0;
+  setStatus(withError ? "error" : "connected");
+  if (!withError) toast(`Scan complete — ${allRows.length} registers read.`);
+}
+
+// ── Result rendering ──────────────────────────────────────────────────────────
+function onResult(msg) {
+  const { register, raw, value, dataType, sanity } = msg;
+
+  const row = { register, raw, value, dataType, sanity };
+  allRows.push(row);
+
+  // Update stats
+  stats.total++;
+  if (sanity.status === "ok")    stats.ok++;
+  else if (sanity.status === "warn") stats.warn++;
+  else                           stats.err++;
+  updateStats();
+
+  // Show table if hidden
+  document.getElementById("emptyState").style.display = "none";
+  document.getElementById("resultTable").style.display = "";
+
+  appendRow(row);
+}
+
+function appendRow(row) {
+  const { register, raw, value, dataType, sanity } = row;
+  const isRegister = dataType !== "coil" && dataType !== "discrete";
+
+  const hexStr    = isRegister && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4, "0") : "—";
+  const binStr    = isRegister && raw !== null ? raw.toString(2).padStart(16, "0") : "—";
+  const signed    = isRegister && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : null;
+  const signedStr = signed !== null ? signed.toString() : "—";
+  const displayVal = raw === null ? "—" : (isRegister ? raw.toString() : value);
+
+  const tr = document.createElement("tr");
+  tr.dataset.reg    = register;
+  tr.dataset.value  = displayVal;
+  tr.dataset.sanity = sanity.status;
+
+  tr.innerHTML = `
+    <td class="reg">${esc(String(register))}</td>
+    <td class="hex">${esc(hexStr)}</td>
+    <td class="val">${esc(String(displayVal))}</td>
+    <td class="signed">${esc(signedStr)}</td>
+    <td class="hex" style="font-size:.72rem;letter-spacing:.5px">${esc(binStr)}</td>
+    <td>${badgeHtml(sanity)}</td>
+  `;
+
+  document.getElementById("resultBody").appendChild(tr);
+}
+
+function badgeHtml(sanity) {
+  const icons = { ok: "✓", warn: "⚠", error: "✕" };
+  const cls   = { ok: "badge-ok", warn: "badge-warn", error: "badge-err" };
+  const label = { ok: "OK", warn: "Warning", error: "Error" };
+
+  if (sanity.status === "error" && sanity.reason) {
+    return `<span class="badge ${cls.error}" title="${esc(sanity.reason)}">${icons.error} ${label.error}</span>`;
+  }
+  if (sanity.status === "warn") {
+    return `<span class="badge ${cls.warn}" title="${esc(sanity.reason)}">${icons.warn} Warning</span>`;
+  }
+  return `<span class="badge ${cls[sanity.status] || "badge-null"}">${icons[sanity.status] || "?"} ${label[sanity.status] || esc(String(sanity.status))}</span>`;
+}
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+function onProgress(msg) {
+  const pct = msg.total > 0 ? Math.round((msg.done / msg.total) * 100) : 0;
+  document.getElementById("progressBar").style.width = pct + "%";
+  document.getElementById("progressText").textContent = `${msg.done} / ${msg.total} (${pct}%)`;
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function applyFilter() {
+  const text   = document.getElementById("filterInput").value.toLowerCase().trim();
+  const sanity = document.getElementById("filterSanity").value;
+  document.querySelectorAll("#resultBody tr").forEach((tr) => {
+    const regMatch  = !text || tr.dataset.reg.includes(text) || tr.dataset.value.toLowerCase().includes(text);
+    const sanMatch  = !sanity || tr.dataset.sanity === sanity;
+    tr.style.display = regMatch && sanMatch ? "" : "none";
+  });
+}
+
+// ── Export CSV ────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const rows = [["Register", "Hex", "Value (unsigned)", "Signed", "Sanity Status", "Sanity Reason"]];
+  allRows.forEach(({ register, raw, dataType, sanity }) => {
+    const isReg = dataType !== "coil" && dataType !== "discrete";
+    const hex    = isReg && raw !== null ? "0x" + raw.toString(16).toUpperCase().padStart(4,"0") : "";
+    const signed = isReg && raw !== null ? (raw > 0x7fff ? raw - 0x10000 : raw) : "";
+    rows.push([register, hex, raw ?? "", signed, sanity.status, sanity.reason]);
+  });
+  const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `modbus_scan_${Date.now()}.csv`;
+  a.click();
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function clearTable() {
+  if (scanning) { toast("Stop the scan before clearing.", true); return; }
+  clearTableData();
+}
+
+function clearTableData() {
+  allRows = [];
+  stats = { total: 0, ok: 0, warn: 0, err: 0 };
+  document.getElementById("resultBody").innerHTML = "";
+  document.getElementById("resultTable").style.display = "none";
+  document.getElementById("emptyState").style.display = "";
+  document.getElementById("statsRow").style.display = "none";
+  document.getElementById("progressCard").style.display = "none";
+  document.getElementById("progressBar").style.width = "0%";
+  document.getElementById("btnExport").disabled = true;
+  updateStats();
+}
+
+function updateStats() {
+  document.getElementById("statTotal").textContent = stats.total;
+  document.getElementById("statOk").textContent    = stats.ok;
+  document.getElementById("statWarn").textContent  = stats.warn;
+  document.getElementById("statErr").textContent   = stats.err;
+}
+
+function setStatus(state) {
+  const dot = document.getElementById("statusDot");
+  dot.className = "status-dot " + (state === "idle" ? "" : state);
+  dot.title = { connected:"Connected", scanning:"Scanning…", error:"Error", idle:"Idle" }[state] || state;
+}
+
+function esc(str) {
+  return String(str).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+let toastTimer = null;
+function toast(msg, isErr = false) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = isErr ? "toast-err" : "";
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 4000);
+}
+
+// ── Wire buttons ──────────────────────────────────────────────────────────────
+document.getElementById("btnScan").addEventListener("click", startScan);
+document.getElementById("btnCancel").addEventListener("click", cancelScan);
+
+// ── Custom sanity check ───────────────────────────────────────────────────────
+// Applied client-side on top of server sanity (override badge if outside user range)
+document.getElementById("sanMin").addEventListener("change", revalidateTable);
+document.getElementById("sanMax").addEventListener("change", revalidateTable);
+
+function revalidateTable() {
+  const minVal = document.getElementById("sanMin").value !== ""
+    ? parseInt(document.getElementById("sanMin").value) : null;
+  const maxVal = document.getElementById("sanMax").value !== ""
+    ? parseInt(document.getElementById("sanMax").value) : null;
+
+  document.querySelectorAll("#resultBody tr").forEach((tr, idx) => {
+    if (idx >= allRows.length) return;
+    const row = allRows[idx];
+    const raw = row.raw;
+    if (raw === null) return;
+
+    let sanity = { ...row.sanity };
+    if (minVal !== null && raw < minVal) {
+      sanity = { status: "warn", reason: `Value ${raw} is below configured minimum (${minVal})` };
+    } else if (maxVal !== null && raw > maxVal) {
+      sanity = { status: "warn", reason: `Value ${raw} exceeds configured maximum (${maxVal})` };
+    }
+
+    const badgeCell = tr.querySelector("td:last-child");
+    if (badgeCell) badgeCell.innerHTML = badgeHtml(sanity);
+    tr.dataset.sanity = sanity.status;
+  });
+  applyFilter();
+}
+
+// ── Auto-connect ──────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>
