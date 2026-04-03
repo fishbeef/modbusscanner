@@ -560,6 +560,15 @@ function sleep(ms) {
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+httpServer.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Error: port ${HTTP_PORT} is already in use. Stop the other process or set a different port with the PORT environment variable (e.g. PORT=8081 npm start).`);
+  } else {
+    console.error("Server error:", err.message);
+  }
+  process.exit(1);
+});
+
 httpServer.listen(HTTP_PORT, () => {
   console.log(`Modbus Scanner running → http://localhost:${HTTP_PORT}`);
 });
