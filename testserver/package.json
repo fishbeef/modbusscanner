@@ -1,0 +1,12 @@
+{
+  "name": "modbus-test-server",
+  "version": "1.0.0",
+  "description": "Modbus TCP test server with simulated registers for testing the Modbus Scanner",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.16"
+  }
+}
