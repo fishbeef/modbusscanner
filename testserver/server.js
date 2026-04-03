@@ -191,8 +191,8 @@ function updateValues() {
   inputRegs[9] = Math.round(sineWave(1500, 4000, 90_000, 5_000));
 
   // ── Energy counter: accumulate based on actual power
-  const intervalH = UPDATE_INTERVAL / 3_600_000;
-  totalEnergyWh += powerRaw * intervalH;
+  const intervalHours = UPDATE_INTERVAL / 3_600_000;
+  totalEnergyWh += powerRaw * intervalHours;
   const words = uint32Words(Math.round(totalEnergyWh));
   holdingRegs[6] = words.lo;
   holdingRegs[7] = words.hi;
