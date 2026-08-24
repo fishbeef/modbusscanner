@@ -1,10 +1,12 @@
 {
   "name": "modbusscanner",
   "version": "1.0.0",
-  "description": "Modbus TCP register scanner with web UI and SQLite data persistence",
+  "description": "Modbus TCP register scanner with web UI, SQLite data persistence, and real-time monitoring",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests.js",
+    "dev": "node server-with-persistence.js"
   },
   "dependencies": {
     "js-yaml": "^4.1.1",
