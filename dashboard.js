@@ -109,8 +109,8 @@ class Dashboard {
                 <input
                   type="text"
                   id="deviceIp"
-                  value="127.0.0.1"
-                  placeholder="192.168.1.40"
+                  value=""
+                  placeholder="Enter device IP address"
                 />
               </div>
               <div class="form-group">

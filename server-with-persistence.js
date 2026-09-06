@@ -15,6 +15,7 @@
 
 const http = require("http");
 const fs = require("fs");
+const net = require("net");
 const path = require("path");
 const { WebSocketServer } = require("ws");
 const ModbusRTU = require("modbus-serial");
@@ -116,6 +117,10 @@ const httpServer = http.createServer((req, res) => {
   // Get latest readings endpoint
   else if (url.pathname === "/api/readings/latest") {
     handleLatestReadings(res);
+  } else if (url.pathname === "/api/scan-targets" && req.method === "GET") {
+    handleGetScanTargets(res);
+  } else if (url.pathname === "/api/scan-targets" && req.method === "POST") {
+    handleSaveScanTargets(req, res);
   } else {
     res.writeHead(404);
     res.end("Not found");
@@ -137,6 +142,100 @@ async function handleExportCSV(url, res) {
   } catch (err) {
     res.writeHead(500);
     res.end(`Error: ${err.message}`);
+  }
+}
+
+function sendJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(payload));
+}
+
+function normalizeTarget(target) {
+  const ip = typeof target?.ip === "string" ? target.ip.trim() : "";
+  const port = Number(target?.port);
+  const unitId = Number(target?.unitId);
+
+  if (!net.isIP(ip)) throw new Error(`Invalid IP address: ${ip || "missing"}`);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid port for ${ip}`);
+  }
+  if (!Number.isInteger(unitId) || unitId < 0 || unitId > 255) {
+    throw new Error(`Invalid unit ID for ${ip}`);
+  }
+
+  return { ip, port, unitId };
+}
+
+function testTargetAccess(target) {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: target.ip, port: target.port });
+    const finish = (status, error = null) => {
+      socket.destroy();
+      resolve({ ...target, lastStatus: status, lastError: error });
+    };
+
+    socket.setTimeout(3000);
+    socket.once("connect", () => finish("reachable"));
+    socket.once("timeout", () => finish("unreachable", "Connection timed out"));
+    socket.once("error", (err) => finish("unreachable", err.message));
+  });
+}
+
+async function handleGetScanTargets(res) {
+  try {
+    sendJson(res, 200, { targets: await dataStore.getScanTargets() });
+  } catch (err) {
+    sendJson(res, 500, { error: err.message });
+  }
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let rejected = false;
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      if (rejected) return;
+      if (body.length + chunk.length > 1024 * 1024) {
+        rejected = true;
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
+    req.on("end", () => {
+      if (rejected) return;
+      try {
+        resolve(JSON.parse(body || "{}"));
+      } catch {
+        reject(new Error("Request body must be valid JSON"));
+      }
+    });
+    req.on("error", (err) => {
+      if (!rejected) reject(err);
+    });
+  });
+}
+
+async function handleSaveScanTargets(req, res) {
+  try {
+    const payload = await readJsonBody(req);
+    if (!Array.isArray(payload.targets) || payload.targets.length === 0) {
+      throw new Error("At least one scan target is required");
+    }
+    if (payload.targets.length > 64) throw new Error("A maximum of 64 scan targets is supported");
+
+    const targets = payload.targets.map(normalizeTarget);
+    const uniqueIps = new Set(targets.map((target) => target.ip));
+    if (uniqueIps.size !== targets.length) throw new Error("Scan targets must be unique");
+
+    const checkedTargets = [];
+    for (const target of targets) checkedTargets.push(await testTargetAccess(target));
+    const savedTargets = await dataStore.saveScanTargets(checkedTargets);
+    sendJson(res, 200, { targets: savedTargets });
+  } catch (err) {
+    sendJson(res, 400, { error: err.message });
   }
 }
 
@@ -417,10 +516,69 @@ async function handleScanYaml(ws, msg, activeSessions) {
   }
 }
 
-// Placeholder for discover handler (same pattern)
+const DISCOVER_TYPES = ["holding", "input", "coil", "discrete"];
+const DISCOVER_BATCH = 10;
+const DISCOVER_MAX = 65536;
+const DISCOVER_TIMEOUT = 2000;
+
 async function handleDiscover(ws, msg, activeSessions) {
-  // Similar implementation...
-  console.log("Discover scan not implemented in this example");
+  const { id, ip, port, unitId } = msg;
+  const session = { cancelled: false };
+  activeSessions.set(id, session);
+  const send = (obj) => {
+    if (ws.readyState === 1) ws.send(JSON.stringify({ ...obj, id }));
+  };
+  const client = new ModbusRTU();
+  client.setTimeout(DISCOVER_TIMEOUT);
+
+  try {
+    await client.connectTCP(ip, { port: Number(port) || 502 });
+    client.setID(Number(unitId) || 1);
+  } catch (err) {
+    send({ type: "error", message: `Connection failed for ${ip}: ${err.message}` });
+    activeSessions.delete(id);
+    return;
+  }
+
+  const totalSteps = DISCOVER_TYPES.length * DISCOVER_MAX;
+  let doneSteps = 0;
+  try {
+    for (const regType of DISCOVER_TYPES) {
+      let address = 0;
+      while (address < DISCOVER_MAX && !session.cancelled) {
+        const quantity = Math.min(DISCOVER_BATCH, DISCOVER_MAX - address);
+        try {
+          const data = await readRegisters(client, regType, address, quantity);
+          data.forEach((value, index) => send({
+            type: "result", discover: true, regType,
+            register: address + index, value, raw: value,
+            dataType: regType, sanity: sanityCheck(value, regType),
+          }));
+        } catch {
+          for (let index = 0; index < quantity && !session.cancelled; index++) {
+            try {
+              const data = await readRegisters(client, regType, address + index, 1);
+              send({
+                type: "result", discover: true, regType,
+                register: address + index, value: data[0], raw: data[0],
+                dataType: regType, sanity: sanityCheck(data[0], regType),
+              });
+            } catch {
+              // Illegal addresses are expected during discovery.
+            }
+          }
+        }
+        doneSteps += quantity;
+        send({ type: "progress", done: doneSteps, total: totalSteps, phase: regType });
+        address += quantity;
+        await sleep(10);
+      }
+    }
+  } finally {
+    try { client.close(); } catch (closeErr) { console.error("Error closing Modbus client:", closeErr.message); }
+    send({ type: "done" });
+    activeSessions.delete(id);
+  }
 }
 
 // Modbus helpers

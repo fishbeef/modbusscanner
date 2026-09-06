@@ -4,7 +4,7 @@
   "description": "Modbus TCP register scanner with web UI, SQLite data persistence, and real-time monitoring",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server-with-persistence.js",
     "test": "node tests.js",
     "test:integration": "node integration-test.js",
     "test:all": "npm test && npm run test:integration",

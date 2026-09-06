@@ -74,9 +74,10 @@ GitHub rejected automatic activation for the current private repository because 
 
 ## Features
 
-- **Modbus TCP** — connects to any Modbus TCP device (default: `192.168.1.40:502`)
+- **Modbus TCP** — connects to one or more configured Modbus TCP devices
+- **Persistent targets** — IP address, port, and unit ID are stored in SQLite and restored on the next start
 - **All register types** — Holding Registers (4x), Input Registers (3x), Coils (0x), Discrete Inputs (1x)
-- **Configurable** — IP address, port, unit ID, register range, batch size
+- **Configurable** — multiple IP addresses with individual ports and unit IDs, plus register range and batch size
 - **Live results** — register values shown as unsigned, signed, hex, and binary
 - **Sanity checks** — automatic warnings for `0xFFFF`, extreme signed values, sensor overflow/underflow; optional user-defined min/max range
 - **Filter & search** — filter by register number, value, or sanity status
@@ -87,7 +88,8 @@ GitHub rejected automatic activation for the current private repository because 
 
 | Field | Default | Description |
 |---|---|---|
-| IP Address | `192.168.1.40` | Target Modbus TCP device IP |
+| IP Address | *(required)* | One or more target Modbus TCP device IPs |
+| Target access | checked when saved | Unreachable targets remain visible with an error and are skipped during scans |
 | Port | `502` | Modbus TCP port |
 | Unit ID | `1` | Modbus unit/slave ID |
 | Start Register | `0` | First register address to scan |
@@ -110,3 +112,7 @@ Set the `PORT` environment variable to use a different HTTP port:
 ```bash
 PORT=3000 npm start
 ```
+
+## Scan Targets
+
+The first start shows an empty target list, so no device is contacted implicitly. Add at least one IP address, port, and unit ID in the web UI. Targets are checked when saved and persisted in `modbus_readings.db`; all scan modes process the saved targets sequentially.

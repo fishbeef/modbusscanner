@@ -65,6 +65,25 @@ function get(pathname, port) {
   });
 }
 
+function post(pathname, port, payload) {
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      hostname: "127.0.0.1",
+      port,
+      path: pathname,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.on("end", () => resolve({ statusCode: response.statusCode, body }));
+    });
+    request.on("error", reject);
+    request.end(JSON.stringify(payload));
+  });
+}
+
 async function testHttpServer() {
   if (fs.existsSync(databasePath)) fs.rmSync(databasePath);
   const port = 18080;
@@ -82,6 +101,16 @@ async function testHttpServer() {
     const stats = await get("/api/stats", port);
     assert.strictEqual(stats.statusCode, 200);
     assert.doesNotThrow(() => JSON.parse(stats.body));
+    const emptyTargets = await get("/api/scan-targets", port);
+    assert.strictEqual(emptyTargets.statusCode, 200);
+    assert.deepStrictEqual(JSON.parse(emptyTargets.body).targets, []);
+    const savedTargets = await post("/api/scan-targets", port, {
+      targets: [{ ip: "127.0.0.1", port: 1, unitId: 1 }],
+    });
+    assert.strictEqual(savedTargets.statusCode, 200);
+    const target = JSON.parse(savedTargets.body).targets[0];
+    assert.strictEqual(target.ip, "127.0.0.1");
+    assert.strictEqual(target.lastStatus, "unreachable");
   } finally {
     await stopProcess(server);
     if (fs.existsSync(databasePath)) fs.rmSync(databasePath);
