@@ -17,7 +17,7 @@ const path = require("path");
 const fs = require("fs");
 
 // Database file location
-const DB_PATH = path.join(__dirname, "modbus_readings.db");
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "modbus_readings.db");
 
 class DataStore {
   constructor() {
@@ -123,8 +123,101 @@ class DataStore {
             value TEXT
           )
         `, (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            reject(err);
+            return;
+          }
+
+          this.db.run(`
+            CREATE TABLE IF NOT EXISTS scan_targets (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              ip TEXT NOT NULL UNIQUE,
+              port INTEGER NOT NULL,
+              unitId INTEGER NOT NULL,
+              last_status TEXT,
+              last_error TEXT,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `, (targetErr) => {
+            if (targetErr) reject(targetErr);
+            else resolve();
+          });
+        });
+      });
+    });
+  }
+
+  /**
+   * Get configured Modbus scan targets.
+   */
+  getScanTargets() {
+    return new Promise((resolve, reject) => {
+      if (!this.initialized) {
+        reject(new Error("DataStore not initialized"));
+        return;
+      }
+
+      this.db.all(`
+        SELECT id, ip, port, unitId, last_status AS lastStatus,
+               last_error AS lastError, updated_at AS updatedAt
+        FROM scan_targets
+        ORDER BY id ASC
+      `, (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+  }
+
+  /**
+   * Replace the configured Modbus scan targets.
+   */
+  saveScanTargets(targets) {
+    return new Promise((resolve, reject) => {
+      if (!this.initialized) {
+        reject(new Error("DataStore not initialized"));
+        return;
+      }
+
+      this.db.serialize(() => {
+        this.db.run("BEGIN TRANSACTION");
+        this.db.run("DELETE FROM scan_targets", (deleteErr) => {
+          if (deleteErr) {
+            this.db.run("ROLLBACK");
+            reject(deleteErr);
+            return;
+          }
+
+          const stmt = this.db.prepare(`
+            INSERT INTO scan_targets (ip, port, unitId, last_status, last_error)
+            VALUES (?, ?, ?, ?, ?)
+          `);
+
+          for (const target of targets) {
+            stmt.run([
+              target.ip,
+              target.port,
+              target.unitId,
+              target.lastStatus || null,
+              target.lastError || null,
+            ]);
+          }
+
+          stmt.finalize((finalizeErr) => {
+            if (finalizeErr) {
+              this.db.run("ROLLBACK");
+              reject(finalizeErr);
+              return;
+            }
+
+            this.db.run("COMMIT", (commitErr) => {
+              if (commitErr) {
+                this.db.run("ROLLBACK");
+                reject(commitErr);
+              }
+              else this.getScanTargets().then(resolve).catch(reject);
+            });
+          });
         });
       });
     });

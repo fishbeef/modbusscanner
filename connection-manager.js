@@ -12,7 +12,8 @@
 
 class ConnectionManager {
   constructor(options = {}) {
-    this.url = options.url || `ws://${window.location.host}`;
+    const host = typeof window !== "undefined" ? window.location.host : "localhost:8080";
+    this.url = options.url || `ws://${host}`;
     this.maxRetries = options.maxRetries || 10;
     this.initialDelay = options.initialDelay || 1000; // 1 second
     this.maxDelay = options.maxDelay || 30000; // 30 seconds
