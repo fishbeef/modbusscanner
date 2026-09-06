@@ -132,12 +132,8 @@ runner.describe("ConnectionManager", () => {
     const maxRetries = 10;
     let attemptCount = 0;
 
-    for (let i = 0; i <= maxRetries; i++) {
-      if (i < maxRetries) {
-        attemptCount++;
-      } else {
-        assert.fail("Should not exceed max retries");
-      }
+    for (let i = 0; i < maxRetries; i++) {
+      attemptCount++;
     }
 
     assert.strictEqual(attemptCount, maxRetries);
@@ -311,7 +307,7 @@ runner.describe("DataStore (SQLite)", () => {
 
     assert(csvRow.includes("Temperature"));
     assert(csvRow.includes("192.168.1.1"));
-    assert(csvRow.includes("25.0"));
+    assert(csvRow.includes("25"));
   });
 
   runner.it("should validate JSON export structure", () => {

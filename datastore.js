@@ -17,7 +17,7 @@ const path = require("path");
 const fs = require("fs");
 
 // Database file location
-const DB_PATH = path.join(__dirname, "modbus_readings.db");
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, "modbus_readings.db");
 
 class DataStore {
   constructor() {
